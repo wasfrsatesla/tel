@@ -17,7 +17,6 @@ if not TOKEN or not ADMIN_ID:
 
 user_message_ids = {}
 user_states = {}  # لتتبع حالة المستخدم (مثل إرسال رسالة جماعية)
-bot_stats = {"total_users": 0, "start_command_usage": 0}
 
 # إعدادات تسجيل الأخطاء (Logging)
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -48,14 +47,12 @@ class Bot:
         self.setup_handlers()
         self.setup_commands()
         self.admin_keyboard = self.create_admin_keyboard()  # لوحة مفاتيح خاصة للإدارة
-        self.user_list = self.load_user_list() # تحميل قائمة المستخدمين عند بدء التشغيل
 
     def setup_commands(self):
         commands = [
             BotCommand("start", "يا هلا بيك"),
             BotCommand("help", "شتحتاج؟"),
             BotCommand("info", "معلومات عن البوت"),
-            BotCommand("stats", "إحصائيات البوت (للمطور)"),
         ]
         self.bot.set_my_commands(commands)
 
@@ -70,7 +67,6 @@ class Bot:
     def create_admin_keyboard(self):
         keyboard = ReplyKeyboardMarkup(resize_keyboard=True, row_width=1)
         keyboard.add(
-            KeyboardButton("📊 عرض الإحصائيات"),  # زر لعرض الإحصائيات
             KeyboardButton("📢 إرسال رسالة للكل"),  # زر لإرسال رسالة جماعية
         )
         return keyboard
@@ -89,33 +85,11 @@ class Bot:
         welcome_text = f"هلو، اني زهرة. شلون اكدر اساعدك، {name}؟\nاترك رسالة واراح اساعدك بأقرب فرصة."
         return welcome_text
 
-    def load_user_list(self):
-        """تحميل قائمة المستخدمين من ملف (إذا كان موجودًا)"""
-        try:
-            with open("user_list.txt", "r") as f:
-                user_ids = [int(line.strip()) for line in f]
-            return set(user_ids)
-        except FileNotFoundError:
-            return set()
-
-    def save_user_list(self):
-        """حفظ قائمة المستخدمين في ملف"""
-        with open("user_list.txt", "w") as f:
-            for user_id in self.user_list:
-                f.write(str(user_id) + "\n")
-
     def setup_handlers(self):
         @self.bot.message_handler(commands=['start'])
         @retry_on_rate_limit()
         def start(message):
             try:
-                user_id = message.from_user.id
-                if user_id not in self.user_list:
-                    self.user_list.add(user_id)
-                    self.save_user_list()
-                    bot_stats["total_users"] += 1
-                bot_stats["start_command_usage"] += 1
-
                 welcome_text = self.format_welcome_message(message.from_user)
                 if WELCOME_IMAGE:
                     self.bot.send_photo(
@@ -179,27 +153,6 @@ class Bot:
             """
             self.bot.reply_to(message, help_text)
 
-        @self.bot.message_handler(commands=['stats'])
-        def stats(message):
-            if message.from_user.id == ADMIN_ID:
-                stats_text = f"""
-📊 إحصائيات البوت:
-- عدد المستخدمين الكلي: {len(self.user_list)}
-- عدد مرات استخدام /start: {bot_stats["start_command_usage"]}
-                """
-                self.bot.reply_to(message, stats_text)
-            else:
-                self.bot.reply_to(message, "ما عندك صلاحية تشوف هاي المعلومات.")
-
-        @self.bot.message_handler(func=lambda message: message.from_user.id == ADMIN_ID and message.text == "📊 عرض الإحصائيات")
-        def admin_show_stats(message):
-            stats_text = f"""
-📊 إحصائيات البوت:
-- عدد المستخدمين الكلي: {len(self.user_list)}
-- عدد مرات استخدام /start: {bot_stats["start_command_usage"]}
-            """
-            self.bot.reply_to(message, stats_text)
-
         @self.bot.message_handler(func=lambda message: message.from_user.id == ADMIN_ID and message.text == "📢 إرسال رسالة للكل")
         def admin_broadcast_message_start(message):
             self.bot.reply_to(message, "دز الرسالة اللي تريد أرسلها للكل.")
@@ -209,23 +162,27 @@ class Bot:
         def admin_broadcast_message_content(message):
             try:
                 count = 0
-                for user_id in self.user_list:
-                    try:
-                        if message.content_type == 'text':
-                            self.bot.send_message(user_id, message.text)
-                        elif message.content_type == 'photo':
-                            self.bot.send_photo(user_id, message.photo[-1].file_id, caption=message.caption)
-                        elif message.content_type == 'video':
-                            self.bot.send_video(user_id, message.video.file_id, caption=message.caption)
-                        elif message.content_type == 'sticker':
-                            self.bot.send_sticker(user_id, message.sticker.file_id)
-                        elif message.content_type == 'document':
-                            self.bot.send_document(user_id, message.document.file_id, caption=message.caption)
-                        count += 1
-                        time.sleep(0.05)  # تجنب تجاوز الحد الأقصى للطلبات
-                    except Exception as e:
-                        logging.warning(f"Failed to send message to {user_id}: {e}")
-                self.bot.reply_to(message, f"تم إرسال الرسالة إلى {count} مستخدم.")
+                # لا توجد لدينا الآن قائمة مستخدمين، لذا يجب أن نعتمد على شيء آخر
+                # على سبيل المثال، يمكنك تخزين IDs في قاعدة بيانات أو ملف مؤقت
+                # هذا مثال تقريبي، يجب استبداله بمنطق حقيقي
+                # في هذا المثال، سنرسل الرسالة فقط إلى المسؤول كإثبات للمفهوم
+                user_id = ADMIN_ID
+                try:
+                    if message.content_type == 'text':
+                        self.bot.send_message(user_id, message.text)
+                    elif message.content_type == 'photo':
+                        self.bot.send_photo(user_id, message.photo[-1].file_id, caption=message.caption)
+                    elif message.content_type == 'video':
+                        self.bot.send_video(user_id, message.video.file_id, caption=message.caption)
+                    elif message.content_type == 'sticker':
+                        self.bot.send_sticker(user_id, message.sticker.file_id)
+                    elif message.content_type == 'document':
+                        self.bot.send_document(user_id, message.document.file_id, caption=message.caption)
+                    count += 1
+                    time.sleep(0.05)  # تجنب تجاوز الحد الأقصى للطلبات
+                except Exception as e:
+                    logging.warning(f"Failed to send message to {user_id}: {e}")
+                self.bot.reply_to(message, f"تم إرسال الرسالة إلى {count} مستخدم (مثال فقط).")
             except Exception as e:
                 logging.exception("Error during broadcast:")
                 self.bot.reply_to(message, "صار خلل أثناء إرسال الرسالة.")
