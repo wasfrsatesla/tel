@@ -180,23 +180,24 @@ class Bot:
                     print(f"Error sending reply to user: {e}")
                     self.bot.reply_to(message, "عذرًا، صار خلل. حاول ترسل الرد مرة لخ.");
 
-        @self.message_handler(func=lambda message: True)
+        @self.bot.message_handler(func=lambda message: True)
         def handle_messages(message):
             if message.text == "🤝 منو آني؟":
-                about_text = "آني بوت صممته علمود أخدمك بـ [مجال معين].";
+                about_text = "آني بوت صممته علمود أخدمك بـ [مجال معين]."
                 self.bot.reply_to(message, about_text)
 
             elif message.text == "📞 احجي وياي":
-                contact_text = "دز رسالتك و ارد عليك.";
+                contact_text = "دز رسالتك و ارد عليك."
                 self.bot.reply_to(message, contact_text)
 
             elif message.text == "❓ المساعدة":
-                help_text = "شلون اكدر اساعدك اليوم؟";
+                help_text = "شلون اكدر اساعدك اليوم؟"
                 self.bot.reply_to(message, help_text)
 
             elif message.text == "/setcommands" and message.from_user.id == ADMIN_ID:
                 self.setup_commands()
-                self.bot.reply_to(message, "تم تحديث قائمة الأوامر.");
+                self.bot.reply_to(message, "تم تحديث قائمة الأوامر.")
+
     def run(self):
         print("✅ البوت يشتغل...")
         self.bot.remove_webhook()  # إزالة الويب هوك
@@ -204,4 +205,4 @@ class Bot:
 
 if __name__ == "__main__":
     bot = Bot() 
-    bot.run()
+    bot.run() 
