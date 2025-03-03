@@ -1,218 +1,160 @@
-import telebot
-from telebot.types import Message, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton, BotCommand, InputMediaPhoto, InputMediaVideo
 import os
-import time
-from functools import wraps
-import logging
+import telebot
+from telebot import types
 
-# إعدادات البوت
-TOKEN = os.getenv("TOKEN")
-ADMIN_ID = int(os.getenv("ADMIN_ID", 0))
-WELCOME_IMAGE = os.getenv("WELCOME_IMAGE")
-BOT_USERNAME = os.getenv("BOT_USERNAME")
+API_TOKEN = '7817440343:AAFEAXnRaRxv3STLGx5N9_8kBasy4fvvFLw'
+OWNER_ID = 960173511  # بدّلها بمعرف التليجرام مالك
 
-# التحقق من تحميل المتغيرات
-if not TOKEN or not ADMIN_ID:
-    raise ValueError("❌ تأكد من ضبط جميع المتغيرات في Secrets!")
+bot = telebot.TeleBot(API_TOKEN)
 
-user_message_ids = {}
-user_states = {}  # لتتبع حالة المستخدم (مثل إرسال رسالة جماعية)
+# تخزين رسائل المستخدمين اللي يحتاجون ردود
+pending_messages = {}
 
-# إعدادات تسجيل الأخطاء (Logging)
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+# رسالة الترحيب بصورة
+@bot.message_handler(commands=['start'])
+def send_welcome(message):
+    welcome_text = "مرحباً بيك في بوت التواصل! شلون أگدر أساعدك اليوم؟"
+    bot.send_photo(message.chat.id, photo='https://telegra.ph/-01-26-17917', caption=welcome_text)
 
-def retry_on_rate_limit(max_retries=3):
-    def decorator(func):
-        @wraps(func)
-        def wrapper(*args, **kwargs):
-            retries = 0
-            while retries < max_retries:
-                try:
-                    return func(*args, **kwargs)
-                except telebot.apihelper.ApiTelegramException as e:
-                    if e.error_code == 429:
-                        retry_after = int(str(e).split('retry after ')[1])
-                        logging.warning(f"تم تجاوز الحد الأقصى للطلبات. الانتظار لمدة {retry_after} ثانية.")
-                        time.sleep(retry_after)
-                        retries += 1
-                        continue
-                    raise
-            raise Exception("❌ فشلت العملية بعد عدة محاولات.")
-        return wrapper
-    return decorator
+# التعامل مع أمر المساعدة
+@bot.message_handler(commands=['help'])
+def send_help(message):
+    if message.from_user.id == OWNER_ID:
+        help_text = """
+        هاي هي الأوامر الي تقدر تستخدمها:
+        /start - رسالة الترحيب
+        /help - قائمة الأوامر
+        /broadcast [رسالة] - نشر رسالة لكل المستخدمين
 
-class Bot:
-    def __init__(self):
-        self.bot = telebot.TeleBot(TOKEN)
-        self.setup_handlers()
-        self.setup_commands()
-        self.admin_keyboard = self.create_admin_keyboard()  # لوحة مفاتيح خاصة للإدارة
+        كمالك للبوت تقدر تسوي هاي الأمور:
+        1️⃣ ترد على أي رسالة محولة إليك
+        2️⃣ ترد على الإشعار الي يظهر تحت الرسائل المحولة
+        3️⃣ تستخدم الأمر /reply [معرف الرسالة] [النص]
+        """
+    else:
+        help_text = """
+        هاي هي الأوامر الي تقدر تستخدمها:
+        /start - رسالة الترحيب
+        /help - قائمة الأوامر
+        
+        رسالتك راح تنرسل للمسؤول حتى يرد عليك.
+        """
+    bot.send_message(message.chat.id, help_text)
 
-    def setup_commands(self):
-        commands = [
-            BotCommand("start", "يا هلا بيك"),
-            BotCommand("help", "شتحتاج؟"),
-            BotCommand("info", "معلومات عن البوت"),
-        ]
-        self.bot.set_my_commands(commands)
+# أمر للبث من قبل المسؤول
+@bot.message_handler(commands=['broadcast'])
+def broadcast(message):
+    if message.from_user.id != OWNER_ID:
+        bot.reply_to(message, "آسف، بس مالك حق تستخدم هذا الأمر.")
+        return
 
-    def create_keyboard(self):
-        keyboard = ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
-        keyboard.add(
-            KeyboardButton("📞 احجي وياي"),
-            KeyboardButton("❓ المساعدة"),
-        )
-        return keyboard
+    broadcast_text = message.text.replace('/broadcast ', '', 1)
+    if not broadcast_text:
+        bot.reply_to(message, "لازم تكتب رسالة للبث!")
+        return
 
-    def create_admin_keyboard(self):
-        keyboard = ReplyKeyboardMarkup(resize_keyboard=True, row_width=1)
-        keyboard.add(
-            KeyboardButton("📢 إرسال رسالة للكل"),  # زر لإرسال رسالة جماعية
-        )
-        return keyboard
+    # هاي الحالة تقدر تبث الرسالة لجميع المستخدمين لو كان عندك قاعدة بيانات
+    bot.reply_to(message, f"تم إرسال رسالة البث: {broadcast_text}")
 
-    def create_welcome_inline_buttons(self):
-        keyboard = InlineKeyboardMarkup(row_width=1)
-        keyboard.add(
-            InlineKeyboardButton("📢 قناتي", url="https://t.me/your_channel"),
-            InlineKeyboardButton("🌍 موقعي", url="https://alihaidershaker.vercel.app/"),
-            InlineKeyboardButton("✉️ راسلني", callback_data="contact_me"),
-        )
-        return keyboard
+# أمر الرد على رسائل معينة من قبل المسؤول
+@bot.message_handler(commands=['reply'])
+def reply_command(message):
+    if message.from_user.id != OWNER_ID:
+        bot.reply_to(message, "آسف، بس مالك حق تستخدم هذا الأمر.")
+        return
 
-    def format_welcome_message(self, user):
-        name = user.first_name
-        welcome_text = f"هلو، اني زهرة. شلون اكدر اساعدك، {name}؟\nاترك رسالة واراح اساعدك بأقرب فرصة."
-        return welcome_text
+    try:
+        # استخراج معرف الرسالة والنص المطلوب الرد عليه
+        parts = message.text.split(' ', 2)
+        if len(parts) < 3:
+            bot.reply_to(message, "استخدام: /reply [معرف الرسالة] [النص]")
+            return
+        
+        message_id = parts[1]
+        reply_text = parts[2]
+        
+        if message_id in pending_messages:
+            user_id = pending_messages[message_id]['user_id']
+            original_msg_id = pending_messages[message_id]['message_id']
+            
+            # إرسال الرد للمستخدم كإجابة مباشرة على رسالته الأصلية
+            bot.send_message(user_id, reply_text, reply_to_message_id=original_msg_id)
+            bot.reply_to(message, "تم إرسال الرد بنجاح!")
+        else:
+            bot.reply_to(message, "معرف الرسالة غير موجود.")
+    except Exception as e:
+        bot.reply_to(message, f"خطأ في إرسال الرد: {str(e)}")
 
-    def setup_handlers(self):
-        @self.bot.message_handler(commands=['start'])
-        @retry_on_rate_limit()
-        def start(message):
+# التعامل مع الرسائل الواردة
+@bot.message_handler(content_types=['text', 'photo', 'video', 'document', 'audio', 'voice', 'sticker', 'animation'])
+def handle_all_messages(message):
+    # إذا كانت الرسالة رد من المالك
+    if message.reply_to_message and message.from_user.id == OWNER_ID:
+        # أولاً نتحقق إذا كانت الرسالة المحولة من مستخدم
+        if hasattr(message.reply_to_message, 'forward_from') and message.reply_to_message.forward_from is not None:
+            user_id = message.reply_to_message.forward_from.id
+            # إعادة إرسال رد المالك للمستخدم
             try:
-                welcome_text = self.format_welcome_message(message.from_user)
-                if WELCOME_IMAGE:
-                    self.bot.send_photo(
-                        message.chat.id,
-                        photo=WELCOME_IMAGE,
-                        caption=welcome_text,
-                        reply_markup=self.create_welcome_inline_buttons(),
-                        parse_mode='HTML'
-                    )
-                else:
-                    self.bot.send_message(
-                        message.chat.id,
-                        welcome_text,
-                        reply_markup=self.create_welcome_inline_buttons(),
-                        parse_mode='HTML'
-                    )
-                self.bot.send_message(
-                    message.chat.id,
-                    "استخدم القائمة الجوة:",
-                    reply_markup=self.create_keyboard()
-                )
+                original_msg_id = message.reply_to_message.forward_from_message_id
 
-                if message.from_user.id != ADMIN_ID:
-                    new_user_info = f"""
-👤 مستخدم جديد طب للبوت:
-• الاسم: {message.from_user.first_name} {message.from_user.last_name or ''}
-• المعرف: @{message.from_user.username or 'ماكو'}
-• الآيدي: {message.from_user.id}
-                    """
-                    self.bot.send_message(ADMIN_ID, new_user_info)
-                    logging.info(f"New user: {message.from_user.id}")
+                if message.content_type == 'text':
+                    bot.send_message(user_id, message.text, reply_to_message_id=original_msg_id)
+                elif message.content_type == 'photo':
+                    bot.send_photo(user_id, message.photo[-1].file_id, caption=message.caption, reply_to_message_id=original_msg_id)
+                elif message.content_type == 'video':
+                    bot.send_video(user_id, message.video.file_id, caption=message.caption, reply_to_message_id=original_msg_id)
+                elif message.content_type == 'document':
+                    bot.send_document(user_id, message.document.file_id, caption=message.caption, reply_to_message_id=original_msg_id)
+                elif message.content_type == 'audio':
+                    bot.send_audio(user_id, message.audio.file_id, caption=message.caption, reply_to_message_id=original_msg_id)
+                elif message.content_type == 'voice':
+                    bot.send_voice(user_id, message.voice.file_id, caption=message.caption, reply_to_message_id=original_msg_id)
+                elif message.content_type == 'sticker':
+                    bot.send_sticker(user_id, message.sticker.file_id, reply_to_message_id=original_msg_id)
+                elif message.content_type == 'animation':
+                    bot.send_animation(user_id, message.animation.file_id, caption=message.caption, reply_to_message_id=original_msg_id)
 
+                bot.reply_to(message, "✅ تم إرسال الرد للمستخدم!")
+                return
             except Exception as e:
-                logging.exception("Error in start handler:")
-                self.bot.reply_to(message, "عذرًا، صار خلل. حاول مرة لخ.")
+                bot.reply_to(message, f"❌ خطأ في إرسال الرد: {str(e)}")
+                return
 
-        @self.bot.callback_query_handler(func=lambda call: True)
-        def handle_callback(call):
-            if call.data == "contact_me":
-                contact_text = "دز رسالتك و ارد عليك بأقرب وقت."
-                self.bot.answer_callback_query(call.id)
-                self.bot.send_message(call.message.chat.id, contact_text)
+    # إذا كانت الرسالة من مستخدم عادي أو مش رد
+    if message.from_user.id != OWNER_ID:
+        # توليد معرف فريد لهذه الرسالة
+        unique_id = f"{message.chat.id}_{message.message_id}"
+        
+        # تخزين معلومات الرسالة للرد عليها لاحقاً
+        pending_messages[unique_id] = {
+            'user_id': message.chat.id,
+            'message_id': message.message_id
+        }
 
-        @self.bot.message_handler(commands=['info'])
-        def info(message):
-            info_text = f"""
-🤖 معلومات عن البوت:
-- آني بوت صممته علمود أخدمك.
-- صممتي: @{BOT_USERNAME}
-- قناتي: [https://t.me/your_channel](https://t.me/your_channel)
-            """
-            self.bot.reply_to(message, info_text, parse_mode='Markdown')
+        try:
+            # تحويل الرسالة للمسؤول
+            forwarded = bot.forward_message(OWNER_ID, message.chat.id, message.message_id)
 
-        @self.bot.message_handler(commands=['help'])
-        def help(message):
-            help_text = """
-🆘 المساعدة:
-- /start: بدء استخدام البوت.
-- /help: عرض رسالة المساعدة.
-- /info: معلومات عن البوت.
-            """
-            self.bot.reply_to(message, help_text)
+            # إنشاء إشعار منظم يوضح كيفية الرد المباشر
+            user_name = message.from_user.first_name
+            if message.from_user.last_name:
+                user_name += f" {message.from_user.last_name}"
+            if message.from_user.username:
+                user_name += f" (@{message.from_user.username})"
+            
+            bot.reply_to(forwarded,
+                f"معرف الرسالة: {unique_id}\n"
+                f"من: {user_name}\n"
+                f"💬 رد مباشرة على هذه الرسالة للرد على المستخدم"
+            )
 
-        @self.bot.message_handler(func=lambda message: message.from_user.id == ADMIN_ID and message.text == "📢 إرسال رسالة للكل")
-        def admin_broadcast_message_start(message):
-            self.bot.reply_to(message, "دز الرسالة اللي تريد أرسلها للكل.")
-            user_states[message.from_user.id] = "waiting_for_broadcast_message"
+            # تأكيد للمستخدم
+            bot.reply_to(message, "تم إرسال رسالتك للمسؤول. راح يرد عليك قريباً!")
+        except Exception as e:
+            bot.reply_to(message, f"خطأ في تحويل الرسالة: {str(e)}")
+            print(f"خطأ في تحويل الرسالة: {e}")
+    else:
+        bot.reply_to(message, "مرحباً مالك البوت! استخدم /help لتشوف الأوامر المتاحة.")
 
-        @self.bot.message_handler(func=lambda message: user_states.get(message.from_user.id) == "waiting_for_broadcast_message", content_types=['text', 'photo', 'video', 'sticker', 'document'])
-        def admin_broadcast_message_content(message):
-            try:
-                count = 0
-                # لا توجد لدينا الآن قائمة مستخدمين، لذا يجب أن نعتمد على شيء آخر
-                # على سبيل المثال، يمكنك تخزين IDs في قاعدة بيانات أو ملف مؤقت
-                # هذا مثال تقريبي، يجب استبداله بمنطق حقيقي
-                # في هذا المثال، سنرسل الرسالة فقط إلى المسؤول كإثبات للمفهوم
-                user_id = ADMIN_ID
-                try:
-                    if message.content_type == 'text':
-                        self.bot.send_message(user_id, message.text)
-                    elif message.content_type == 'photo':
-                        self.bot.send_photo(user_id, message.photo[-1].file_id, caption=message.caption)
-                    elif message.content_type == 'video':
-                        self.bot.send_video(user_id, message.video.file_id, caption=message.caption)
-                    elif message.content_type == 'sticker':
-                        self.bot.send_sticker(user_id, message.sticker.file_id)
-                    elif message.content_type == 'document':
-                        self.bot.send_document(user_id, message.document.file_id, caption=message.caption)
-                    count += 1
-                    time.sleep(0.05)  # تجنب تجاوز الحد الأقصى للطلبات
-                except Exception as e:
-                    logging.warning(f"Failed to send message to {user_id}: {e}")
-                self.bot.reply_to(message, f"تم إرسال الرسالة إلى {count} مستخدم (مثال فقط).")
-            except Exception as e:
-                logging.exception("Error during broadcast:")
-                self.bot.reply_to(message, "صار خلل أثناء إرسال الرسالة.")
-            finally:
-                user_states[message.from_user.id] = None  # reset state
-
-        @self.bot.message_handler(func=lambda message: True, content_types=['text', 'photo', 'video', 'sticker', 'document'])
-        def handle_messages(message):
-            try:
-                if message.text == "📞 احجي وياي":
-                    contact_text = "دز رسالتك و ارد عليك."
-                    self.bot.reply_to(message, contact_text)
-
-                elif message.text == "❓ المساعدة":
-                    help_text = "شلون اكدر اساعدك اليوم؟"
-                    self.bot.reply_to(message, help_text)
-                else:
-                    # معالجة الرسائل العادية (إعادة توجيه إلى المسؤول أو الرد التلقائي)
-                    self.bot.forward_message(ADMIN_ID, message.chat.id, message.message_id)
-                    self.bot.reply_to(message, "وصلت رسالتك للمسؤول. شكراً لتواصلك.")
-
-            except Exception as e:
-                logging.exception("Error handling message:")
-                self.bot.reply_to(message, "صار خلل. حاول مرة لخ.")
-
-    def run(self):
-        print("✅ البوت يشتغل...")
-        self.bot.remove_webhook()  # إزالة الويب هوك
-        self.bot.infinity_polling(timeout=20, long_polling_timeout=5)  # تشغيل البوت في وضع polling
-
-if __name__ == "__main__":
-    bot = Bot()
-    bot.run()
+# بدء الاستعلام عن الرسائل
+bot.polling()
